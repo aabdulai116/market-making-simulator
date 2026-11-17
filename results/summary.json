@@ -1,0 +1,44 @@
+{
+  "chosen_params": {
+    "gamma": 0.01,
+    "horizon": 60
+  },
+  "test": [
+    {
+      "strategy": "Fixed spread",
+      "days": 100,
+      "mean_daily_pnl": -166.25,
+      "std_daily_pnl": 1860.5065801680157,
+      "sharpe_annualized": -1.4185044873899872,
+      "total_pnl": -16625.0,
+      "max_drawdown": 28777.0,
+      "win_rate": 0.51,
+      "fills_per_day": 326.54,
+      "lots_per_day": 936.46,
+      "pnl_per_lot": -0.1775302735834953,
+      "spread_capture_per_day": 1638.415,
+      "markout_per_lot": 0.6146250518186007,
+      "flatten_cost_per_day": 80.75,
+      "mean_abs_inventory": 27.32156837606838,
+      "max_abs_inventory": 65
+    },
+    {
+      "strategy": "Inventory skew (A-S)",
+      "days": 100,
+      "mean_daily_pnl": 497.37,
+      "std_daily_pnl": 250.4230624403835,
+      "sharpe_annualized": 31.52866154004806,
+      "total_pnl": 49737.0,
+      "max_drawdown": 281.0,
+      "win_rate": 0.95,
+      "fills_per_day": 402.0,
+      "lots_per_day": 1199.61,
+      "pnl_per_lot": 0.41460974816815466,
+      "spread_capture_per_day": 1512.07,
+      "markout_per_lot": 0.5198071988090125,
+      "flatten_cost_per_day": 3.495,
+      "mean_abs_inventory": 1.8801474358974357,
+      "max_abs_inventory": 27
+    }
+  ]
+}
