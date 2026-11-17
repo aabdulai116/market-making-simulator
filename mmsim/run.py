@@ -26,7 +26,7 @@ from .strategies import FixedSpreadMaker, InventorySkewMaker
 
 TEST_SEED_OFFSET = 100_000   # test days never overlap with training days
 
-GAMMAS = [0.005, 0.01, 0.02, 0.03]
+GAMMAS = [0.005, 0.01, 0.02, 0.03, 0.05, 0.08]
 HORIZONS = [30, 60]
 
 
@@ -156,7 +156,7 @@ def _plot_intraday(all_results, out):
         steps = np.arange(len(day.mid_path))[window]
 
         price_ax = axes[0, col]
-        price_ax.plot(steps, day.mid_path[window] / 100, color="black", lw=1, label="Mid")
+        price_ax.plot(steps, day.mid_path[window] / 100, color="black", lw=1, label="Market mid")
         price_ax.plot(steps, day.fundamental_path[window] / 100, color="#d98c1f",
                       lw=1, ls="--", label="Hidden value")
         price_ax.plot(steps, day.bid_path[window] / 100, color="#2e8b57", lw=0.8, label="MM bid")
@@ -190,6 +190,9 @@ def _plot_tuning(grid, out):
         ax.plot(rows["gamma"], rows["sharpe_annualized"], marker="o",
                 label=f"horizon = {horizon} steps")
     ax.set_xscale("log")
+    ax.set_xticks(GAMMAS)
+    ax.set_xticklabels([str(g) for g in GAMMAS])
+    ax.minorticks_off()
     ax.set_title("Training days: Sharpe ratio by risk aversion")
     ax.set_xlabel("gamma (risk aversion)")
     ax.set_ylabel("Annualized Sharpe")

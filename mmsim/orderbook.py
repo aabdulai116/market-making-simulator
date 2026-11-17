@@ -59,6 +59,27 @@ class OrderBook:
             return None
         return (bid + ask) / 2.0
 
+    def best_excluding(self, side: int, owner: str) -> Optional[int]:
+        """Best price on one side, ignoring orders that belong to `owner`.
+
+        A market maker should value the stock from everyone else's orders.
+        If it used a mid that includes its own quotes, its quotes would feed
+        back into its own fair value.
+        """
+        book = self.bids if side == BUY else self.asks
+        for price in sorted(book, reverse=(side == BUY)):
+            for order in book[price]:
+                if order.owner != owner:
+                    return price
+        return None
+
+    def mid_excluding(self, owner: str) -> Optional[float]:
+        bid = self.best_excluding(BUY, owner)
+        ask = self.best_excluding(SELL, owner)
+        if bid is None or ask is None:
+            return None
+        return (bid + ask) / 2.0
+
     def spread(self) -> Optional[int]:
         bid = self.best_bid()
         ask = self.best_ask()

@@ -92,7 +92,7 @@ def simulate_day(strategy, config: MarketConfig, seed: int) -> DayResult:
     _seed_book(book, rng, config, lp_expiry)
 
     sigma_sq = config.fundamental_vol ** 2
-    last_mid = book.mid()
+    last_mid = book.mid_excluding(MM)
 
     pnl_path = np.zeros(steps)
     inventory_path = np.zeros(steps, dtype=int)
@@ -116,15 +116,16 @@ def simulate_day(strategy, config: MarketConfig, seed: int) -> DayResult:
         _ensure_two_sided(book, fundamental, lp_expiry, step, config)
 
         # 3. Market maker updates its quotes.
-        mid = book.mid()
+        # Fair value comes from everyone else's orders, not our own quotes.
+        mid = book.mid_excluding(MM)
         change = mid - last_mid
         sigma_sq = (1 - config.vol_ewma) * sigma_sq + config.vol_ewma * change ** 2
         last_mid = mid
 
         state = QuoteState(
             mid=mid,
-            best_bid=book.best_bid(),
-            best_ask=book.best_ask(),
+            best_bid=book.best_excluding(BUY, MM),
+            best_ask=book.best_excluding(SELL, MM),
             inventory=account.inventory,
             sigma=math.sqrt(sigma_sq),
             steps_left=steps - step,
@@ -149,7 +150,7 @@ def simulate_day(strategy, config: MarketConfig, seed: int) -> DayResult:
             _ensure_two_sided(book, fundamental, lp_expiry, step, config)
 
         # 5. Book keeping for the market maker.
-        mid_now = book.mid()
+        mid_now = book.mid_excluding(MM)
         for fill in fills:
             spread_capture += _apply_fill(account, fill, step, mid)
         _sync_quote_ids(book, account)
@@ -159,14 +160,14 @@ def simulate_day(strategy, config: MarketConfig, seed: int) -> DayResult:
         mid_path[step] = mid_now
         fundamental_path[step] = fundamental
         if account.bid_id is not None:
-            bid_path[step] = account.bid_price
+            bid_path[step] = book.orders[account.bid_id].price
         if account.ask_id is not None:
-            ask_path[step] = account.ask_price
+            ask_path[step] = book.orders[account.ask_id].price
 
     # End of day: cancel quotes and flatten inventory at market.
-    pnl_before_flatten = account.cash + account.inventory * book.mid()
+    pnl_before_flatten = account.cash + account.inventory * mid_path[-1]
     _cancel_quotes(book, account)
-    _flatten(book, account)
+    _flatten(book, account, fallback_price=mid_path[-1])
     final_pnl = account.cash
     flatten_cost = pnl_before_flatten - final_pnl
     pnl_path[-1] = final_pnl
@@ -232,10 +233,10 @@ def _expire_lp_orders(book, lp_expiry, step):
 
 def _ensure_two_sided(book, fundamental, lp_expiry, step, config):
     """A backstop so the book never goes empty on one side."""
-    if book.best_bid() is None:
+    if book.best_excluding(BUY, MM) is None:
         order_id, _ = book.add_limit("lp", BUY, math.floor(fundamental) - 3, 5)
         lp_expiry[order_id] = step + int(config.lp_order_life)
-    if book.best_ask() is None:
+    if book.best_excluding(SELL, MM) is None:
         order_id, _ = book.add_limit("lp", SELL, math.ceil(fundamental) + 3, 5)
         lp_expiry[order_id] = step + int(config.lp_order_life)
 
@@ -244,41 +245,42 @@ def _ensure_two_sided(book, fundamental, lp_expiry, step, config):
 # Market maker plumbing
 # ----------------------------------------------------------------------
 def _update_quotes(book, account, quote, size):
-    """Cancel and replace only when a price changes, so unchanged quotes keep
-    their place in the queue."""
-    fills = []
+    """Cancel and replace only the sides whose price changed, so an unchanged
+    quote keeps its place in the queue."""
+    bid_changed = quote.bid != account.bid_price or account.bid_id not in book.orders
+    ask_changed = quote.ask != account.ask_price or account.ask_id not in book.orders
 
-    best_ask = book.best_ask()
-    best_bid = book.best_bid()
-    bid = quote.bid
-    ask = quote.ask
-    # Quotes stay passive: never cross the opposite best price.
-    if bid is not None and best_ask is not None and bid >= best_ask:
-        bid = best_ask - 1
-    if ask is not None and best_bid is not None and ask <= best_bid:
-        ask = best_bid + 1
-
-    if bid != account.bid_price or account.bid_id not in book.orders:
-        if account.bid_id is not None:
-            book.cancel(account.bid_id)
+    # Pull stale quotes first so they don't distort the passive price check.
+    if bid_changed and account.bid_id is not None:
+        book.cancel(account.bid_id)
         account.bid_id = None
         account.bid_price = None
-        if bid is not None:
-            order_id, new_fills = book.add_limit(MM, BUY, bid, size)
-            fills += new_fills
-            account.bid_id = order_id
-            account.bid_price = bid
-
-    if ask != account.ask_price or account.ask_id not in book.orders:
-        if account.ask_id is not None:
-            book.cancel(account.ask_id)
+    if ask_changed and account.ask_id is not None:
+        book.cancel(account.ask_id)
         account.ask_id = None
         account.ask_price = None
-        if ask is not None:
-            order_id, new_fills = book.add_limit(MM, SELL, ask, size)
-            fills += new_fills
-            account.ask_id = order_id
-            account.ask_price = ask
+
+    fills = []
+    if bid_changed and quote.bid is not None:
+        bid = quote.bid
+        best_ask = book.best_ask()
+        # Stay passive: never cross the best ask.
+        if best_ask is not None and bid >= best_ask:
+            bid = best_ask - 1
+        order_id, new_fills = book.add_limit(MM, BUY, bid, size)
+        fills += new_fills
+        account.bid_id = order_id
+        account.bid_price = quote.bid   # remember what the strategy asked for
+
+    if ask_changed and quote.ask is not None:
+        ask = quote.ask
+        best_bid = book.best_bid()
+        if best_bid is not None and ask <= best_bid:
+            ask = best_bid + 1
+        order_id, new_fills = book.add_limit(MM, SELL, ask, size)
+        fills += new_fills
+        account.ask_id = order_id
+        account.ask_price = quote.ask
 
     return fills
 
@@ -318,7 +320,7 @@ def _cancel_quotes(book, account):
     account.ask_id = None
 
 
-def _flatten(book, account):
+def _flatten(book, account, fallback_price):
     if account.inventory == 0:
         return
     side = SELL if account.inventory > 0 else BUY
@@ -332,7 +334,10 @@ def _flatten(book, account):
             account.inventory += fill.qty
     # If the book was too thin, close the rest one tick worse than the last fill.
     if account.inventory != 0:
-        last_price = fills[-1].price if fills else book.mid()
+        if fills:
+            last_price = fills[-1].price
+        else:
+            last_price = fallback_price
         penalty_price = last_price + side * 1
         account.cash += account.inventory * penalty_price
         account.inventory = 0

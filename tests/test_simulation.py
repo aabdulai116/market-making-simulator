@@ -31,3 +31,4 @@ def test_skew_moves_quotes_against_inventory():
     long_quote = strategy.quote(long)
     assert long_quote.ask < flat_quote.ask
     assert long_quote.bid < flat_quote.bid
+

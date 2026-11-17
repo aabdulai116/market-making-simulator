@@ -10,17 +10,17 @@ I built this to understand the core problem of market making: every trade you ma
 
 | Metric | Fixed spread | Inventory skew (A&S) |
 |---|---:|---:|
-| Mean daily P&L | -$166 | **$497** |
-| Std dev of daily P&L | $1,861 | **$250** |
-| Max drawdown | $28,777 | **$281** |
-| Profitable days | 51% | **95%** |
-| Average absolute inventory (lots) | 27.3 | **1.9** |
-| Largest position (lots) | 65 | **27** |
-| One minute markout per lot | +$0.61 | +$0.52 |
-| Cost to flatten at the close, per day | $81 | **$3.50** |
-| Annualized Sharpe ratio | -1.4 | 31.5 |
+| Mean daily P&L | -$371 | **$277** |
+| Std dev of daily P&L | $1,897 | **$332** |
+| Max drawdown | $54,860 | **$1,277** |
+| Profitable days | 47% | **81%** |
+| Average absolute inventory (lots) | 29.6 | **1.7** |
+| Largest position (lots) | 65 | **38** |
+| One minute markout per lot | +$0.49 | +$0.36 |
+| Cost to flatten at the close, per day | $82 | **$2.28** |
+| Annualized Sharpe ratio | -3.1 | 13.2 |
 
-Both bots earn similar spread on each trade. The difference is inventory. The fixed spread bot keeps buying into falling prices and selling into rising ones, so it regularly sits on 30 to 60 lots and its daily P&L swings by thousands of dollars. The inventory skew bot leans its quotes to get back to flat, which cut daily P&L volatility by 87%, drawdown by 99%, and average position size by 93%.
+Both bots earn similar spread on each trade. The difference is inventory. The fixed spread bot keeps buying into falling prices and selling into rising ones, so it often sits on 30 to 60 lots and its daily P&L swings by thousands of dollars. The inventory skew bot leans its quotes to get back to flat, which cut daily P&L volatility by 82%, drawdown by 98%, and average position size by 94%.
 
 A note on the Sharpe ratio: market makers that end every day flat really do have very high Sharpe ratios, but this number comes from a simplified simulation with no fees, no latency and no competing market makers, so treat it as a relative comparison, not a forecast.
 
@@ -35,6 +35,8 @@ Each trading day is 6.5 hours, split into 4,680 steps of 5 seconds. Prices are i
 | Noise traders | Send random buy and sell market orders | The flow a market maker profits from |
 | Informed traders | Trade only when the book is mispriced versus hidden value | Adverse selection: they pick off stale quotes |
 | Market maker | Runs one of the strategies below | The thing being tested |
+
+The bot values the stock using everyone else's orders, not its own quotes, so its quotes can't feed back into its own fair value.
 
 Everything trades through a real limit order book (`mmsim/orderbook.py`) with price and time priority, partial fills, and cancels. The market maker only cancels and replaces a quote when its price changes, so an unchanged quote keeps its place in the queue.
 
@@ -55,7 +57,7 @@ When the bot is long, its reservation price drops, which makes its ask more attr
 
 ## Avoiding overfitting
 
-Risk aversion `gamma` and the `horizon` are chosen on 40 training days (seeds 0 to 39) and then frozen. All numbers above come from 100 separate test days (seeds 100,000 and up).
+Risk aversion `gamma` and the `horizon` are chosen on 40 training days (seeds 0 to 39) from a grid of 12 settings and then frozen. The best setting was gamma = 0.03 with a 30 step horizon. All numbers above come from 100 separate test days (seeds 100,000 and up).
 
 ![Tuning](results/tuning_sharpe.png)
 
@@ -75,7 +77,7 @@ python -m mmsim.run --train-days 40 --test-days 100 --out results
 python -m pytest
 ```
 
-The full run takes about 90 seconds on a laptop.
+The full run takes about two minutes on a laptop.
 
 ## Project layout
 

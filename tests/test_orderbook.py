@@ -56,3 +56,15 @@ def test_cancel_removes_order_and_empty_level():
     assert book.cancel(order_id)
     assert book.best_bid() is None
     assert not book.cancel(order_id)
+
+
+def test_mid_excluding_ignores_own_quotes():
+    book = OrderBook()
+    book.add_limit("lp", BUY, 98, 5)
+    book.add_limit("lp", SELL, 104, 5)
+    book.add_limit("MM", BUY, 100, 5)
+    book.add_limit("MM", SELL, 102, 5)
+    assert book.mid() == 101
+    assert book.mid_excluding("MM") == 101       # (98 + 104) / 2
+    assert book.best_excluding(BUY, "MM") == 98
+    assert book.best_excluding(SELL, "MM") == 104
